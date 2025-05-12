@@ -471,6 +471,9 @@ elif page == "Financial & Timing Analysis":
         df['exchange_rate'] = df['createdAt'].apply(get_cached_exchange_rate)
         df['supplier_cost_usd'] = df['cheapestSupplierCost'] * df['exchange_rate']
         
+        # Calculate 95% of revenue
+        df['revenue_95'] = df['priceInUSD'] * 0.95
+        
         if include_private:
             # Calculate monthly average supplier cost for non-private orders
             df['month'] = pd.to_datetime(df['createdAt']).dt.to_period('M')
@@ -483,15 +486,15 @@ elif page == "Financial & Timing Analysis":
                     df.loc[mask, 'supplier_cost_usd'] = monthly_avg_cost[month]
             
             # Calculate profit for all orders
-            df["cost"] = (df["supplier_cost_usd"] * (df["quantity"]/100)) + df["OrderDiscountValueInUSD"] + df["walletUsed"]
-            df["profit"] = df["priceInUSD"] - df["cost"]
+            df["cost"] = (df["supplier_cost_usd"] * (df["quantity"]/100))
+            df["profit"] = df["revenue_95"] - df["cost"]
             
             # Add note about private supplier estimation
             st.info("Private supplier orders are included in profit calculations using monthly average supplier costs.")
         else:
             # Calculate profit only for non-private orders
-            df["cost"] = (df["supplier_cost_usd"] * (df["quantity"]/100)) + df["OrderDiscountValueInUSD"] + df["walletUsed"]
-            df["profit"] = df["priceInUSD"] - df["cost"]
+            df["cost"] = (df["supplier_cost_usd"] * (df["quantity"]/100))
+            df["profit"] = df["revenue_95"] - df["cost"]
             # Set profit to 0 for private orders
             df.loc[df['privateSupplier'], 'profit'] = 0
             
@@ -501,7 +504,7 @@ elif page == "Financial & Timing Analysis":
                 st.info(f"{private_count} private supplier orders are excluded from profit calculations.")
         
         # Calculate metrics
-        total_revenue = df["priceInUSD"].sum()
+        total_revenue = df["revenue_95"].sum()
         if include_private:
             total_profit = df["profit"].sum()
             avg_profit = df["profit"].mean()
@@ -511,7 +514,7 @@ elif page == "Financial & Timing Analysis":
             total_profit = df.loc[non_private_mask, "profit"].sum()
             avg_profit = df.loc[non_private_mask, "profit"].mean()
         
-        avg_order_value = df["priceInUSD"].mean()
+        avg_order_value = df["priceInUSD"].mean()  # Keep original price for AOV
         profit_margin = (total_profit / total_revenue) * 100 if total_revenue > 0 else 0
         
         # Calculate completion time in minutes
@@ -535,13 +538,13 @@ elif page == "Financial & Timing Analysis":
         st.subheader("Revenue and Profit Over Time")
         if include_private:
             daily_metrics = df.groupby(pd.to_datetime(df["createdAt"]).dt.date).agg({
-                "priceInUSD": "sum",
+                "revenue_95": "sum",
                 "profit": "sum"
             }).reset_index()
         else:
             non_private_mask = ~df['privateSupplier']
             daily_metrics = df[non_private_mask].groupby(pd.to_datetime(df["createdAt"]).dt.date).agg({
-                "priceInUSD": "sum",
+                "revenue_95": "sum",
                 "profit": "sum"
             }).reset_index()
         
@@ -611,13 +614,13 @@ elif page == "Financial & Timing Analysis":
         st.subheader("Average Order Value and Profit Over Time")
         if include_private:
             daily_avgs = df.groupby(pd.to_datetime(df["createdAt"]).dt.date).agg({
-                "priceInUSD": "mean",
+                "priceInUSD": "mean",  # Keep original price for AOV
                 "profit": "mean"
             }).reset_index()
         else:
             non_private_mask = ~df['privateSupplier']
             daily_avgs = df[non_private_mask].groupby(pd.to_datetime(df["createdAt"]).dt.date).agg({
-                "priceInUSD": "mean",
+                "priceInUSD": "mean",  # Keep original price for AOV
                 "profit": "mean"
             }).reset_index()
         
@@ -651,7 +654,7 @@ elif page == "Financial & Timing Analysis":
         
         # Detailed Data Table
         st.subheader("Detailed Data")
-        display_df = df[["orderId", "priceInUSD", "cost", "profit", "completion_time", "createdAt", "updatedAt", "privateSupplier"]]
+        display_df = df[["orderId", "revenue_95", "cost", "profit", "completion_time", "createdAt", "updatedAt", "privateSupplier"]]
         display_df.columns = ["Order ID", "Revenue (USD)", "Cost (USD)", "Profit (USD)", "Completion Time (min)", "Created At", "Updated At", "Private Supplier"]
         st.dataframe(display_df, use_container_width=True)
     else:
